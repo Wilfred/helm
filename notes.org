@@ -1,0 +1,9 @@
+helm-full-frame seems redundant.
+
+To test:
+
+(add-to-list 'load-path "/home/wilfred/.emacs.d/elpa/helm-20150518.202")
+
+(require 'helm)
+(require 'helm-command)
+(add-to-list 'load-path "/home/wilfred/.emacs.d/elpa/helm-20150518.202")

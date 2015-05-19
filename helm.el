@@ -419,52 +419,58 @@ See `helm-case-fold-search' for more info."
   "Reuse the last state of window split, vertical or horizontal.
 That is when you use `helm-toggle-resplit-window' the next helm session
 will reuse the same window scheme than the one of last session unless
-`helm-split-window-default-side' is 'same or 'other."
+`helm-split-window-method' is 'same or 'other."
   :group 'helm
   :type 'boolean)
 
+(defcustom helm-split-window-position 'below
+  "If we split the current window, this variable controls where
+we place the helm buffer. This should be a value accepted by
+`split-window'.
+
+See `helm-split-window-position' to control whether a split
+happens."
+  :group 'helm
+  :options '(above below left right))
+
+(defcustom helm-split-window-method 'other
+  "This setting controls when and how the window is split to show a helm buffer.
+
+The following values are understood by helm:
+
+'same : Always display the helm buffer in the current window.
+
+'other : If there's a split, use the other window. If there's no split,
+behaves the same as 'below.
+
+'two-windows : Always split the window into exactly two, regardless of the
+current split.
+
+'inside : Always split the current window into two, even if
+there's a split already.
+
+Alternatively, you may provide your own function to handle window
+splitting. See `helm-split-window-default-fn' for an example."
+  :group 'helm)
+
+;; TODO: deprecate.
 (defcustom helm-split-window-preferred-function 'helm-split-window-default-fn
   "Default function used for splitting window."
   :group 'helm
   :type 'function)
 
 (defcustom helm-split-window-default-side 'below
-  "The default side to display `helm-buffer'.
-Must be one acceptable arg for `split-window' SIDE,
-that is 'below, 'above, 'left or 'right.
-
-Other acceptable values are 'same which always display `helm-buffer'
-in current window and 'other that display `helm-buffer' below if only one
-window or in `other-window-for-scrolling' if available.
-
-A nil value as same effect as 'below.
-If `helm-full-frame' is non--nil, it take precedence on this.
-
-See also `helm-split-window-in-side-p' and `helm-always-two-windows' that
-take precedence on this.
-
-NOTE: this have no effect if `helm-split-window-preferred-function' is not
-`helm-split-window-default-fn' unless this new function handle this."
+  "Deprecated, see `helm-split-window-position'."
   :group 'helm
   :type 'symbol)
 
 (defcustom helm-split-window-in-side-p nil
-  "Force splitting inside selected window when non--nil.
-See also `helm-split-window-default-side'.
-
-NOTE: this have no effect if `helm-split-window-preferred-function' is not
-`helm-split-window-default-fn' unless this new function handle this."
+  "Deprecated, see `helm-split-window-method'."
   :group 'helm
   :type 'boolean)
 
 (defcustom helm-always-two-windows nil
-  "When non--nil helm will use two windows in this frame.
-That is one window to display `helm-buffer' and one to display
-`helm-current-buffer'.
-Note: this have no effect when `helm-split-window-in-side-p' is non--nil,
-or when `helm-split-window-default-side' is set to 'same.
-When `helm-autoresize-mode' is enabled, setting this to nil
-will have no effect until this mode will be disabled."
+  "Deprecated, see `helm-split-window-method'."
   :group 'helm
   :type 'boolean)
 
@@ -2102,6 +2108,7 @@ window or frame configuration is saved/restored according to values of
                               (last-nonminibuffer-frame))))
                  (select-frame-set-input-focus frame))))))
 
+;; FIXME
 (defun helm-split-window-default-fn (window)
   (let (split-width-threshold)
     (if (and (fboundp 'window-in-direction)
@@ -2109,12 +2116,12 @@ window or frame configuration is saved/restored according to values of
              ;; e.g M-: and try to use helm-show-kill-ring.
              (not (minibufferp helm-current-buffer)))
         (if (or (one-window-p t)
-                helm-split-window-in-side-p)
+                (eq helm-split-window-method 'inside))
             (split-window
-             (selected-window) nil (if (eq helm-split-window-default-side 'other)
-                                       'below helm-split-window-default-side))
+             (selected-window) nil (if (eq helm-split-window-method 'other)
+                                       'below helm-split-window-position))
           ;; If more than one window reuse one of them.
-          (cl-case helm-split-window-default-side
+          (cl-case helm-split-window-method
             (left  (or (helm-window-in-direction 'left)
                        (helm-window-in-direction 'above)
                        (selected-window)))
@@ -2147,14 +2154,14 @@ The function used to display `helm-buffer'."
   (let (pop-up-frames
         (split-window-preferred-function
          helm-split-window-preferred-function)
-        (helm-split-window-default-side
+        (helm-split-window-method
          (if (and (not helm-full-frame)
                   helm-reuse-last-window-split-state)
-             (cond ((eq helm-split-window-default-side 'same) 'same)
-                   ((eq helm-split-window-default-side 'other) 'other)
+             (cond ((eq helm-split-window-method 'same) 'same)
+                   ((eq helm-split-window-method 'other) 'other)
                    (helm--window-side-state)
-                   (t helm-split-window-default-side))
-           helm-split-window-default-side)))
+                   (t helm-split-window-method))
+           helm-split-window-method)))
     (prog1
         (funcall (with-current-buffer buffer helm-display-function) buffer)
       (setq helm-onewindow-p (one-window-p t))
@@ -2174,15 +2181,15 @@ Arg ENABLE will be the value of the `no-other-window' window property."
 (defun helm-default-display-buffer (buffer)
   "Default function to display `helm-buffer' BUFFER.
 It uses `switch-to-buffer' or `pop-to-buffer' depending of value of
-`helm-full-frame' and/or `helm-split-window-default-side'."
+`helm-full-frame' and/or `helm-split-window-method'."
   (if (or (buffer-local-value 'helm-full-frame (get-buffer buffer))
-          (and (eq helm-split-window-default-side 'same)
+          (and (eq helm-split-window-method 'same)
                (one-window-p t)))
       (progn (delete-other-windows) (switch-to-buffer buffer))
-    (when (and (or helm-always-two-windows helm-autoresize-mode)
-               (not (eq helm-split-window-default-side 'same))
+    (when (and (or (eq helm-split-window-method 'two-windows) helm-autoresize-mode)
+               (not (eq helm-split-window-method 'same))
                (not (minibufferp helm-current-buffer))
-               (not helm-split-window-in-side-p))
+               (not (eq helm-split-window-method 'inside)))
       (delete-other-windows))
     (pop-to-buffer buffer)))
 
@@ -2293,7 +2300,7 @@ It is intended to use this only in `helm-initial-setup'."
                        (>= split-width-threshold (+ (frame-width) 4))))
               'vertical 'horizontal))
     (setq helm--window-side-state
-          (or helm-split-window-default-side 'below)))
+          (or helm-split-window-method 'below)))
   ;; Call the init function for sources where appropriate
   (helm-funcall-foreach
    'init (and helm-source-filter
@@ -4585,32 +4592,32 @@ Returns the resulting buffer."
   (when helm-prevent-escaping-from-minibuffer
     (helm-prevent-switching-other-window :enabled nil))
   (unwind-protect
-       (with-helm-window
-         (if (or helm-full-frame (one-window-p t))
-             (message "Error: Attempt to resplit a single window")
-           (let ((before-height (window-height)))
-             (delete-window)
-             (set-window-buffer
-              (select-window
-               (if (= (window-height) before-height) ; initial split was horizontal.
-                   ;; Split window vertically with `helm-buffer' placed
-                   ;; on the good side according to actual value of
-                   ;; `helm-split-window-default-side'.
-                   (prog1
-                       (cond ((or (eq helm-split-window-default-side 'above)
-                                  (eq helm-split-window-default-side 'left))
-                              (split-window
-                               (selected-window) nil 'above))
-                             (t (split-window-vertically)))
-                     (setq helm-split-window-state 'vertical))
-                 ;; Split window vertically, same comment as above.
-                 (setq helm-split-window-state 'horizontal)
-                 (cond ((or (eq helm-split-window-default-side 'left)
-                            (eq helm-split-window-default-side 'above))
-                        (split-window (selected-window) nil 'left))
-                       (t (split-window-horizontally)))))
-              helm-buffer)))
-         (setq helm--window-side-state (helm--get-window-side-state)))
+      (with-helm-window
+        (if (or helm-full-frame (one-window-p t))
+            (message "Error: Attempt to resplit a single window")
+          (let ((before-height (window-height)))
+            (delete-window)
+            (set-window-buffer
+             (select-window
+              (if (= (window-height) before-height) ; initial split was horizontal.
+                  ;; Split window vertically with `helm-buffer' placed
+                  ;; on the good side according to actual value of
+                  ;; `helm-split-window-method'.
+                  (prog1
+                      (cond ((or (eq helm-split-window-method 'above)
+                                 (eq helm-split-window-method 'left))
+                             (split-window
+                              (selected-window) nil 'above))
+                            (t (split-window-vertically)))
+                    (setq helm-split-window-state 'vertical))
+                ;; Split window vertically, same comment as above.
+                (setq helm-split-window-state 'horizontal)
+                (cond ((or (eq helm-split-window-method 'left)
+                           (eq helm-split-window-method 'above))
+                       (split-window (selected-window) nil 'left))
+                      (t (split-window-horizontally)))))
+             helm-buffer)))
+        (setq helm--window-side-state (helm--get-window-side-state)))
     (when helm-prevent-escaping-from-minibuffer
       (helm-prevent-switching-other-window :enabled t))))
 
@@ -5216,20 +5223,22 @@ This happen after `helm-input-idle-delay' secs."
                              100))))
 
 (define-minor-mode helm-autoresize-mode
-    "Auto resize helm window when enabled.
-Helm window is resized according to values of `helm-autoresize-max-height'
-and `helm-autoresize-min-height'.
-Note that when this mode is enabled, helm behave like when
-`helm-always-two-windows' is enabled.
+  "Auto resizes the helm window when enabled.
 
-See `fit-window-to-buffer' for more infos."
+The helm window is resized according to values of
+`helm-autoresize-max-height' and `helm-autoresize-min-height'.
+
+Note that when this mode is enabled, helm behaves as if
+`helm-split-window-method` is 'two-windows.
+
+See `fit-window-to-buffer' for more information."
   :group 'helm
   :global t
   (if helm-autoresize-mode
       (progn (add-hook 'helm-after-update-hook 'helm--autoresize-hook)
              (add-hook 'helm-window-configuration-hook 'helm--autoresize-hook))
-      (remove-hook 'helm-after-update-hook 'helm--autoresize-hook)
-      (remove-hook 'helm-window-configuration-hook 'helm--autoresize-hook)))
+    (remove-hook 'helm-after-update-hook 'helm--autoresize-hook)
+    (remove-hook 'helm-window-configuration-hook 'helm--autoresize-hook)))
 
 
 (provide 'helm)
